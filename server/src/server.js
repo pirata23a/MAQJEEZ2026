@@ -2,16 +2,18 @@ import express from "express";
 import cors from "cors";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { db, get, all, run } from "./db.js";
 import { seedMaqjeez } from "./seed.js";
 import { hashPassword, verifyPassword, signToken, authMiddleware } from "./auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, "../../dist");
+const PUBLIC_DIR = resolve(__dirname, "../public");
 const app = express();
 app.use(cors());
-app.use(express.json());
-app.use("/media", express.static(resolve(__dirname, "../public")));
+app.use(express.json({ limit: "25mb" })); // fotos del taller van en base64
+app.use("/media", express.static(PUBLIC_DIR));
 app.use(express.static(DIST_DIR));
 
 /* ----------------------- row mappers ----------------------- */
@@ -429,6 +431,125 @@ app.post("/api/finance/supplier-payment", async (req, res) => {
     await tx.rollback();
     res.status(500).json({ error: "No se pudo registrar el pago" });
   }
+});
+
+/* ----------------------- taller / servicio técnico ----------------------- */
+const mapRepair = (r) => ({
+  id: String(r.id),
+  code: r.code,
+  clientName: r.client_name,
+  clientPhone: r.client_phone,
+  machineType: r.machine_type,
+  brand: r.brand,
+  model: r.model,
+  fault: r.fault,
+  status: r.status,
+  budget: r.budget,
+  paid: r.paid,
+  notes: r.notes,
+  photosIn: safeArr(r.photos_in),
+  photosOut: safeArr(r.photos_out),
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  deliveredAt: r.delivered_at,
+});
+function safeArr(s) {
+  try { return JSON.parse(s || "[]"); } catch { return []; }
+}
+// guarda un dataURL (base64) en /public/repairs y devuelve la ruta /media/...
+function saveDataUrl(companyId, repairId, slot, dataUrl) {
+  const m = /^data:(image\/\w+);base64,(.+)$/s.exec(dataUrl || "");
+  if (!m) return null;
+  const ext = m[1] === "image/png" ? "png" : m[1] === "image/webp" ? "webp" : "jpg";
+  const dir = resolve(PUBLIC_DIR, "repairs", String(companyId), String(repairId));
+  mkdirSync(dir, { recursive: true });
+  const fname = `${slot}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  writeFileSync(resolve(dir, fname), Buffer.from(m[2], "base64"));
+  return `/media/repairs/${companyId}/${repairId}/${fname}`;
+}
+
+app.get("/api/repairs", async (req, res) => {
+  res.json((await all("SELECT * FROM repairs WHERE company_id = ? ORDER BY id DESC", [cid(req)])).map(mapRepair));
+});
+
+app.post("/api/repairs", async (req, res) => {
+  const b = req.body || {};
+  const info = await run(
+    `INSERT INTO repairs (company_id, code, client_name, client_phone, machine_type, brand, model, fault, status, budget, notes)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      cid(req), "TMP", b.clientName || "", b.clientPhone || "",
+      b.machineType === "electrica" ? "electrica" : "explosion",
+      b.brand || "", b.model || "", b.fault || "",
+      b.status || "ingresado", Number(b.budget) || 0, b.notes || "",
+    ],
+  );
+  const id = info.lastInsertRowid;
+  const code = `OT-${1000 + id}`;
+  await run("UPDATE repairs SET code = ? WHERE id = ?", [code, id]);
+  // fotos de ingreso opcionales
+  if (Array.isArray(b.photosIn) && b.photosIn.length) {
+    const urls = b.photosIn.map((d) => saveDataUrl(cid(req), id, "in", d)).filter(Boolean);
+    if (urls.length) await run("UPDATE repairs SET photos_in = ? WHERE id = ?", [JSON.stringify(urls), id]);
+  }
+  res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [id])));
+});
+
+app.patch("/api/repairs/:id", async (req, res) => {
+  const r = await get("SELECT * FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  if (!r) return res.status(404).json({ error: "Orden no encontrada" });
+  const b = req.body || {};
+  const fields = ["client_name", "client_phone", "machine_type", "brand", "model", "fault", "status", "budget", "notes"];
+  const map = {
+    client_name: b.clientName, client_phone: b.clientPhone, machine_type: b.machineType,
+    brand: b.brand, model: b.model, fault: b.fault, status: b.status, budget: b.budget, notes: b.notes,
+  };
+  const sets = [], args = [];
+  for (const f of fields) if (map[f] !== undefined) { sets.push(`${f} = ?`); args.push(map[f]); }
+  sets.push("updated_at = datetime('now')");
+  if (b.status === "entregado" && r.status !== "entregado") sets.push("delivered_at = datetime('now')");
+  args.push(r.id);
+  await run(`UPDATE repairs SET ${sets.join(", ")} WHERE id = ?`, args);
+  res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));
+});
+
+app.post("/api/repairs/:id/photos", async (req, res) => {
+  const r = await get("SELECT * FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  if (!r) return res.status(404).json({ error: "Orden no encontrada" });
+  const b = req.body || {};
+  const slot = b.slot === "out" ? "out" : "in";
+  const images = Array.isArray(b.images) ? b.images : [];
+  const current = safeArr(slot === "out" ? r.photos_out : r.photos_in);
+  const nuevas = images.map((d) => saveDataUrl(cid(req), r.id, slot, d)).filter(Boolean);
+  const todas = [...current, ...nuevas];
+  await run(`UPDATE repairs SET ${slot === "out" ? "photos_out" : "photos_in"} = ?, updated_at = datetime('now') WHERE id = ?`, [JSON.stringify(todas), r.id]);
+  res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));
+});
+
+app.post("/api/repairs/:id/charge", async (req, res) => {
+  const r = await get("SELECT * FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  if (!r) return res.status(404).json({ error: "Orden no encontrada" });
+  const amount = Math.max(0, Number(req.body?.amount) || 0);
+  const method = req.body?.method || "efectivo";
+  if (amount <= 0) return res.status(400).json({ error: "Importe inválido" });
+  const tx = await db.transaction("write");
+  try {
+    await tx.execute({ sql: "UPDATE repairs SET paid = paid + ?, updated_at = datetime('now') WHERE id = ?", args: [amount, r.id] });
+    await tx.execute({
+      sql: "INSERT INTO finance_entries (company_id, kind, concept, amount, method, on_account) VALUES (?,?,?,?,?,0)",
+      args: [cid(req), "cobro-taller", `Taller · ${r.code} · ${r.client_name || "cliente"}`, amount, method],
+    });
+    await tx.commit();
+    res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));
+  } catch {
+    await tx.rollback();
+    res.status(500).json({ error: "No se pudo registrar el cobro" });
+  }
+});
+
+app.delete("/api/repairs/:id", async (req, res) => {
+  await run("DELETE FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  res.json({ ok: true });
 });
 
 /* ----------------------- mercado libre ----------------------- */

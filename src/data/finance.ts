@@ -43,10 +43,11 @@ export const expenseCategories = [
   "Otros",
 ];
 
-export type EntryKind = "venta" | "compra" | "gasto" | "pago-proveedor";
+export type EntryKind = "venta" | "compra" | "gasto" | "pago-proveedor" | "cobro-taller";
 
 export const entryMeta: Record<EntryKind, { label: string; dir: "in" | "out"; tone: string }> = {
   venta: { label: "Venta", dir: "in", tone: "success" },
+  "cobro-taller": { label: "Taller", dir: "in", tone: "success" },
   compra: { label: "Compra", dir: "out", tone: "warning" },
   gasto: { label: "Gasto", dir: "out", tone: "danger" },
   "pago-proveedor": { label: "Pago a proveedor", dir: "out", tone: "brand" },

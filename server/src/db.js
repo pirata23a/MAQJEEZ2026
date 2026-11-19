@@ -122,6 +122,27 @@ CREATE TABLE IF NOT EXISTS ml_accounts (
   health TEXT NOT NULL DEFAULT 'ok'
 );
 CREATE INDEX IF NOT EXISTS idx_ml_company ON ml_accounts(company_id);
+CREATE TABLE IF NOT EXISTS repairs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  client_name TEXT NOT NULL DEFAULT '',
+  client_phone TEXT DEFAULT '',
+  machine_type TEXT NOT NULL DEFAULT 'explosion',
+  brand TEXT DEFAULT '',
+  model TEXT DEFAULT '',
+  fault TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'ingresado',
+  budget INTEGER NOT NULL DEFAULT 0,
+  paid INTEGER NOT NULL DEFAULT 0,
+  notes TEXT DEFAULT '',
+  photos_in TEXT NOT NULL DEFAULT '[]',
+  photos_out TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  delivered_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_repairs_company ON repairs(company_id);
 `;
 
 await db.executeMultiple(SCHEMA);

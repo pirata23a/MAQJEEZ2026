@@ -22,6 +22,7 @@ import {
   Factory,
   LineChart,
   ReceiptText,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ export const nav: NavItem[] = [
   { to: "/woocommerce", label: "WooCommerce", icon: ShoppingCart, group: "canales" },
   { to: "/canales-externos", label: "Canales externos", icon: Share2, group: "canales" },
   { to: "/local-fisico", label: "Local físico", icon: Building2, group: "canales" },
+  { to: "/taller", label: "Taller · Servicio técnico", icon: Wrench, group: "negocio" },
 
   { to: "/ventas", label: "Ventas", icon: ReceiptText, group: "negocio" },
   { to: "/productos", label: "Productos", icon: Boxes, group: "negocio" },

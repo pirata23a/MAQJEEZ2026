@@ -20,6 +20,7 @@ import { Productos } from "@/pages/Productos";
 import { Combos } from "@/pages/Combos";
 import { Movimientos } from "@/pages/Movimientos";
 import { LocalFisico } from "@/pages/LocalFisico";
+import { Taller } from "@/pages/Taller";
 import { Ventas } from "@/pages/Ventas";
 import { Finanzas } from "@/pages/Finanzas";
 import { Proveedores } from "@/pages/Proveedores";
@@ -41,6 +42,7 @@ const realPages: Record<string, ReactNode> = {
   "/woocommerce": <CanalConecta slug="woocommerce" />,
   "/canales-externos": <CanalConecta slug="canales-externos" />,
   "/local-fisico": <LocalFisico />,
+  "/taller": <Taller />,
   "/ventas": <Ventas />,
   "/productos": <Productos />,
   "/combos": <Combos />,
