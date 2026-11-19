@@ -3,7 +3,7 @@
 # TURSO_AUTH_TOKEN en el panel de Render.
 services:
   - type: web
-    name: maqjeez
+    name: maqjeez2026
     runtime: node
     plan: free
     region: oregon
