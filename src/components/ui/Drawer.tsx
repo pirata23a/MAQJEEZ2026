@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +25,7 @@ export function Drawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <div className={cn("fixed inset-0 z-50", open ? "" : "pointer-events-none")}>
       <div
         className={cn(
@@ -63,6 +64,7 @@ export function Drawer({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
