@@ -1,514 +1,354 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Search,
   Plus,
-  Minus,
   Trash2,
   ShoppingCart,
-  CheckCircle2,
-  Store,
   Receipt,
+  ShoppingBag,
+  CheckCircle2,
+  ArrowRight,
+  Store,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Input, Field, Select } from "@/components/ui/Field";
+import { Input, Field } from "@/components/ui/Field";
 import { Drawer } from "@/components/ui/Drawer";
-import { Thumb } from "@/components/ChannelPills";
-import { useProducts, stockLevel } from "@/context/products-context";
+import { ExpenseDrawer, PurchaseDrawer } from "@/components/FinanceDrawers";
 import { usePos, paymentMethods, type PaymentMethod, type Sale } from "@/context/pos-context";
-import { categories } from "@/data/products";
+import { useFinance } from "@/context/finance-context";
 import { money, num, cn } from "@/lib/utils";
 
-type Cart = Record<string, number>;
+type Panel = null | "venta" | "gasto" | "compra";
+
+function isToday(at: string) {
+  const d = new Date(at.includes("T") ? at : at.replace(" ", "T"));
+  return d.toDateString() === new Date().toDateString();
+}
 
 export function LocalFisico() {
-  const { products, addProduct } = useProducts();
-  const { registerSale, sales, todayTotal } = usePos();
-
-  const [query, setQuery] = useState("");
-  const [cat, setCat] = useState("all");
-  const [cart, setCart] = useState<Cart>({});
-  const [discount, setDiscount] = useState(0);
-  const [payment, setPayment] = useState<PaymentMethod>("efectivo");
-  const [paidWith, setPaidWith] = useState("");
+  const { sales, todayTotal } = usePos();
+  const { ledger } = useFinance();
+  const [panel, setPanel] = useState<Panel>(null);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
-  const [quickOpen, setQuickOpen] = useState(false);
 
-  const filtered = useMemo(
-    () =>
-      products.filter((p) => {
-        if (cat !== "all" && p.category !== cat) return false;
-        const q = query.trim().toLowerCase();
-        if (q && !p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q))
-          return false;
-        return true;
-      }),
-    [products, cat, query],
-  );
+  const hoy = useMemo(() => {
+    const ventasHoy = sales.filter((s) => s.status !== "anulada" && isToday(s.at));
+    const egresosHoy = ledger.filter((l) => l.dir === "out" && isToday(l.at));
+    return {
+      ventasCount: ventasHoy.length,
+      ventasTotal: ventasHoy.reduce((a, s) => a + s.total, 0),
+      gastosTotal: egresosHoy.reduce((a, l) => a + l.amount, 0),
+    };
+  }, [sales, ledger]);
 
-  const add = (id: string) => {
-    const p = products.find((x) => x.id === id);
-    if (!p) return;
-    setCart((c) => {
-      const next = (c[id] ?? 0) + 1;
-      if (next > p.stock) return c;
-      return { ...c, [id]: next };
-    });
-  };
-  const dec = (id: string) =>
-    setCart((c) => {
-      const next = (c[id] ?? 0) - 1;
-      const copy = { ...c };
-      if (next <= 0) delete copy[id];
-      else copy[id] = next;
-      return copy;
-    });
-  const removeLine = (id: string) =>
-    setCart((c) => {
-      const copy = { ...c };
-      delete copy[id];
-      return copy;
-    });
-
-  const lines = Object.entries(cart).map(([id, qty]) => {
-    const p = products.find((x) => x.id === id)!;
-    return { productId: id, name: p.name, qty, price: p.price, category: p.category };
-  });
-  const subtotal = lines.reduce((a, l) => a + l.price * l.qty, 0);
-  const total = Math.max(0, subtotal - discount);
-  const paid = parseInt(paidWith || "0", 10) || 0;
-  const change = payment === "efectivo" && paid > 0 ? Math.max(0, paid - total) : 0;
-  const cashShort = payment === "efectivo" && paid > 0 && paid < total;
-
-  const createQuick = async (draft: Parameters<typeof addProduct>[0]) => {
-    const created = await addProduct(draft);
-    if (created) {
-      setCart((c) => ({ ...c, [created.id]: 1 }));
-      setQuickOpen(false);
-    }
-  };
-
-  const checkout = async () => {
-    if (lines.length === 0) return;
-    try {
-      const sale = await registerSale({
-        lines: lines.map(({ productId, name, qty, price }) => ({ productId, name, qty, price })),
-        discount,
-        payment,
-        paidWith: payment === "efectivo" && paid > 0 ? paid : null,
-      });
-      setLastSale(sale);
-      setCart({});
-      setDiscount(0);
-      setPaidWith("");
-    } catch {
-      /* el toast de error ya se mostró */
-    }
-  };
+  const actions = [
+    {
+      id: "venta" as const,
+      icon: ShoppingCart,
+      tone: "success",
+      title: "Registrar venta",
+      desc: "Cargá una venta del mostrador y cobrá (efectivo, débito, etc.).",
+    },
+    {
+      id: "gasto" as const,
+      icon: Receipt,
+      tone: "danger",
+      title: "Registrar gasto",
+      desc: "Gastos del día: mercadería, servicios, sueldos, lo que sea.",
+    },
+    {
+      id: "compra" as const,
+      icon: ShoppingBag,
+      tone: "brand",
+      title: "Compra a proveedor",
+      desc: "Mercadería que le comprás a un proveedor (suma stock).",
+    },
+  ];
 
   return (
     <div className="animate-fade-up">
       <PageHeader
-        title="Local físico · Punto de venta"
-        subtitle="Vendé en el mostrador. Cada venta descuenta stock y queda registrada."
+        title="Local físico · Caja del día"
+        subtitle="Cargá lo del día: ventas, gastos y compras a proveedores."
         actions={
-          <div className="hidden items-center gap-4 sm:flex">
-            <div className="text-right">
-              <p className="text-[12px] text-muted">Ventas de hoy</p>
-              <p className="font-bold text-fg tnum">
-                {money(todayTotal)} <span className="text-[12px] font-normal text-muted">· {num(sales.length)} tickets</span>
-              </p>
-            </div>
+          <div className="hidden text-right sm:block">
+            <p className="text-[12px] text-muted">Ventas de hoy</p>
+            <p className="font-bold text-fg tnum">
+              {money(todayTotal || hoy.ventasTotal)}{" "}
+              <span className="text-[12px] font-normal text-muted">· {num(hoy.ventasCount)} tickets</span>
+            </p>
           </div>
         }
       />
 
       <HelpAccordion
-        title="¿Cómo cobrar una venta?"
+        title="¿Qué cargo desde el Local?"
         intro={
           <>
-            Esta es la <strong className="text-fg">caja</strong>. Armás el ticket y cobrás; la venta
-            descuenta el stock y queda guardada en <em>Ventas</em>.
+            Esta es tu <strong className="text-fg">caja diaria</strong>. Elegí qué querés cargar: una
+            venta, un gasto o una compra a proveedor. Todo queda registrado en Ventas y en Finanzas.
           </>
         }
         steps={[
-          { title: "Agregá productos al ticket", desc: "Tocá un producto (o buscalo por nombre/SKU). Si todavía no está cargado, usá el botón Producto nuevo." },
-          { title: "Elegí el pago y cobrá", desc: "Medio de pago, y si es efectivo poné con cuánto paga para ver el vuelto. Después tocá Cobrar." },
-          { title: "Queda registrada", desc: "La venta descuenta stock y aparece en Ventas. Si te equivocaste, la podés anular desde ahí." },
+          { title: "Registrar venta", desc: "Cargás los ítems (concepto y precio), elegís el pago y cobrás. Queda en Ventas." },
+          { title: "Registrar gasto", desc: "Cualquier gasto del día (mercadería, servicios, etc.). Queda en Finanzas como egreso." },
+          { title: "Compra a proveedor", desc: "Lo que le comprás a un proveedor: suma stock y registra el egreso (o cuenta corriente)." },
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* picker */}
-        <div className="lg:col-span-2">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar producto o escanear SKU…"
-                className="pl-9"
-              />
+      {/* 3 acciones */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {actions.map((a) => (
+          <button
+            key={a.id}
+            onClick={() => setPanel(a.id)}
+            className="group flex flex-col items-start gap-3 rounded-2xl border border-border bg-surface p-6 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-pop"
+          >
+            <span
+              className={cn(
+                "grid h-12 w-12 place-items-center rounded-xl",
+                a.tone === "success" && "bg-success/12 text-success",
+                a.tone === "danger" && "bg-danger/12 text-danger",
+                a.tone === "brand" && "bg-brand/12 text-brand",
+              )}
+            >
+              <a.icon className="h-6 w-6" />
+            </span>
+            <div>
+              <p className="flex items-center gap-1.5 text-[15px] font-semibold text-fg">
+                {a.title}
+                <ArrowRight className="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5" />
+              </p>
+              <p className="mt-1 text-[13px] leading-snug text-muted">{a.desc}</p>
             </div>
-            <Button variant="outline" onClick={() => setQuickOpen(true)} className="shrink-0">
-              <Plus className="h-4 w-4" />
-              Producto nuevo
-            </Button>
-          </div>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {["all", ...categories].map((c) => (
-              <button
-                key={c}
-                onClick={() => setCat(c)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  cat === c
-                    ? "border-brand bg-brand/10 text-brand"
-                    : "border-border bg-surface text-muted hover:text-fg",
-                )}
-              >
-                {c === "all" ? "Todos" : c}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((p) => {
-              const out = p.stock <= 0;
-              const inCart = cart[p.id] ?? 0;
-              return (
-                <button
-                  key={p.id}
-                  disabled={out}
-                  onClick={() => add(p.id)}
-                  className={cn(
-                    "group relative flex flex-col rounded-2xl border border-border bg-surface p-3 text-left transition-all",
-                    out
-                      ? "cursor-not-allowed opacity-55"
-                      : "hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-pop active:scale-[0.98]",
-                  )}
-                >
-                  <div className="mb-2 flex items-start justify-between">
-                    <Thumb name={p.name} category={p.category} image={p.image} />
-                    {inCart > 0 && (
-                      <span className="grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-[12px] font-bold text-brand-fg tnum">
-                        {inCart}
-                      </span>
-                    )}
-                  </div>
-                  <p className="line-clamp-2 min-h-[2.5em] text-[13px] font-medium leading-tight text-fg">
-                    {p.name}
-                  </p>
-                  <div className="mt-1.5 flex items-center justify-between">
-                    <span className="font-semibold text-fg tnum">{money(p.price)}</span>
-                    {out ? (
-                      <Badge tone="danger">Sin stock</Badge>
-                    ) : stockLevel(p) === "low" ? (
-                      <Badge tone="warning">{p.stock}</Badge>
-                    ) : (
-                      <span className="text-[12px] text-muted tnum">{p.stock} u.</span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ticket */}
-        <div className="lg:sticky lg:top-20 lg:self-start">
-          {lastSale ? (
-            <SaleSuccess sale={lastSale} onNew={() => setLastSale(null)} />
-          ) : (
-            <Card className="flex max-h-[calc(100dvh-8rem)] flex-col">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                <h2 className="flex items-center gap-2 font-semibold text-fg">
-                  <Receipt className="h-[18px] w-[18px] text-brand" />
-                  Ticket
-                </h2>
-                {lines.length > 0 && (
-                  <button
-                    onClick={() => setCart({})}
-                    className="text-[13px] font-medium text-muted hover:text-danger"
-                  >
-                    Vaciar
-                  </button>
-                )}
-              </div>
-
-              {lines.length === 0 ? (
-                <div className="grid flex-1 place-items-center gap-2 px-6 py-14 text-center">
-                  <ShoppingCart className="h-8 w-8 text-muted" />
-                  <p className="text-sm text-muted">Tocá un producto para agregarlo al ticket.</p>
-                </div>
-              ) : (
-                <div className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-                  {lines.map((l) => (
-                    <div key={l.productId} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium text-fg">{l.name}</p>
-                        <p className="text-[12px] text-muted tnum">
-                          {l.qty} × {money(l.price)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <StepBtn onClick={() => dec(l.productId)}>
-                          <Minus className="h-3.5 w-3.5" />
-                        </StepBtn>
-                        <span className="w-6 text-center text-sm font-semibold tnum">{l.qty}</span>
-                        <StepBtn onClick={() => add(l.productId)}>
-                          <Plus className="h-3.5 w-3.5" />
-                        </StepBtn>
-                        <button
-                          onClick={() => removeLine(l.productId)}
-                          className="ml-1 grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-danger/10 hover:text-danger"
-                          aria-label="Quitar"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <span className="w-20 text-right text-[13px] font-semibold text-fg tnum">
-                        {money(l.price * l.qty)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {lines.length > 0 && (
-                <div className="space-y-3 border-t border-border px-5 py-4">
-                  <div className="flex items-center justify-between text-[13px]">
-                    <span className="text-muted">Subtotal</span>
-                    <span className="font-medium text-fg tnum">{money(subtotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[13px]">
-                    <span className="text-muted">Descuento</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={discount || ""}
-                        onChange={(e) => setDiscount(Math.max(0, +e.target.value))}
-                        placeholder="0"
-                        className="h-8 w-24 rounded-lg border border-border bg-bg px-2 text-right text-sm text-fg tnum focus:border-brand focus:bg-surface"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-end justify-between border-t border-border pt-3">
-                    <span className="font-medium text-fg">Total</span>
-                    <span className="text-2xl font-bold tracking-tight text-fg tnum">{money(total)}</span>
-                  </div>
-
-                  {/* payment */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {paymentMethods.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => setPayment(m.id)}
-                        className={cn(
-                          "rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition-colors",
-                          payment === m.id
-                            ? "border-brand bg-brand/10 text-brand"
-                            : "border-border bg-surface text-muted hover:text-fg",
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {payment === "efectivo" && (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 text-[13px] text-muted">
-                        Paga con
-                        <span>$</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={paidWith}
-                          onChange={(e) => setPaidWith(e.target.value)}
-                          placeholder="0"
-                          className="h-8 w-24 rounded-lg border border-border bg-bg px-2 text-right text-sm text-fg tnum focus:border-brand focus:bg-surface"
-                        />
-                      </div>
-                      <span className={cn("text-[13px] font-semibold tnum", cashShort ? "text-danger" : "text-success")}>
-                        {cashShort ? "Falta " : "Vuelto "}
-                        {money(cashShort ? total - paid : change)}
-                      </span>
-                    </div>
-                  )}
-
-                  <Button size="lg" className="w-full" disabled={cashShort} onClick={checkout}>
-                    Cobrar {money(total)}
-                  </Button>
-                </div>
-              )}
-            </Card>
-          )}
-        </div>
+          </button>
+        ))}
       </div>
 
-      <QuickProductDrawer open={quickOpen} onClose={() => setQuickOpen(false)} onCreate={createQuick} />
+      {/* resumen de hoy */}
+      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <Card className="p-5">
+          <p className="text-[13px] text-muted">Ventas de hoy</p>
+          <p className="mt-1 text-2xl font-bold text-success tnum">{money(hoy.ventasTotal)}</p>
+          <p className="text-[12px] text-muted tnum">{num(hoy.ventasCount)} tickets</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-[13px] text-muted">Gastos de hoy</p>
+          <p className="mt-1 text-2xl font-bold text-danger tnum">{money(hoy.gastosTotal)}</p>
+          <p className="text-[12px] text-muted">salidas de caja</p>
+        </Card>
+        <Card className="col-span-2 p-5 lg:col-span-1">
+          <p className="text-[13px] text-muted">Resultado del día</p>
+          <p
+            className={cn(
+              "mt-1 text-2xl font-bold tnum",
+              hoy.ventasTotal - hoy.gastosTotal < 0 ? "text-danger" : "text-fg",
+            )}
+          >
+            {money(hoy.ventasTotal - hoy.gastosTotal)}
+          </p>
+          <p className="text-[12px] text-muted">ventas menos gastos</p>
+        </Card>
+      </div>
+
+      {lastSale && (
+        <div className="mt-4">
+          <SaleSuccess sale={lastSale} onClose={() => setLastSale(null)} />
+        </div>
+      )}
+
+      <VentaRapidaDrawer
+        open={panel === "venta"}
+        onClose={() => setPanel(null)}
+        onDone={(s) => {
+          setLastSale(s);
+          setPanel(null);
+        }}
+      />
+      <ExpenseDrawer open={panel === "gasto"} onClose={() => setPanel(null)} />
+      <PurchaseDrawer open={panel === "compra"} onClose={() => setPanel(null)} />
     </div>
   );
 }
 
-function QuickProductDrawer({
+/* ---------- Venta rápida (sin catálogo) ---------- */
+type Line = { name: string; qty: number; price: number };
+
+function VentaRapidaDrawer({
   open,
   onClose,
-  onCreate,
+  onDone,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (draft: Parameters<ReturnType<typeof useProducts>["addProduct"]>[0]) => void;
+  onDone: (s: Sale) => void;
 }) {
+  const { registerSale } = usePos();
+  const [lines, setLines] = useState<Line[]>([]);
   const [name, setName] = useState("");
+  const [qty, setQty] = useState(1);
   const [price, setPrice] = useState(0);
-  const [category, setCategory] = useState("Varios");
-  const [stock, setStock] = useState(1);
+  const [payment, setPayment] = useState<PaymentMethod>("efectivo");
+  const [paidWith, setPaidWith] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setLines([]);
     setName("");
+    setQty(1);
     setPrice(0);
-    setCategory("Varios");
-    setStock(1);
+    setPayment("efectivo");
+    setPaidWith("");
   }, [open]);
 
-  const valid = name.trim() && price > 0;
+  const addLine = () => {
+    if (!name.trim() || price <= 0) return;
+    setLines((l) => [...l, { name: name.trim(), qty: Math.max(1, qty), price }]);
+    setName("");
+    setQty(1);
+    setPrice(0);
+  };
+
+  const total = lines.reduce((a, l) => a + l.price * l.qty, 0);
+  const paid = parseInt(paidWith || "0", 10) || 0;
+  const change = payment === "efectivo" && paid > 0 ? Math.max(0, paid - total) : 0;
+  const cashShort = payment === "efectivo" && paid > 0 && paid < total;
+
+  const cobrar = async () => {
+    if (lines.length === 0) return;
+    setBusy(true);
+    try {
+      const sale = await registerSale({
+        lines: lines.map((l) => ({ productId: "", name: l.name, qty: l.qty, price: l.price })),
+        discount: 0,
+        payment,
+        paidWith: payment === "efectivo" && paid > 0 ? paid : null,
+      });
+      onDone(sale);
+    } catch {
+      /* toast de error ya mostrado */
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title="Producto nuevo"
-      subtitle="Cargá un producto que no está en el catálogo y se agrega al ticket."
+      title="Registrar venta"
+      subtitle="Cargá los ítems de la venta y cobrá. No hace falta que estén en el catálogo."
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            disabled={!valid}
-            onClick={() =>
-              onCreate({
-                sku: `RAP-${Date.now().toString().slice(-6)}`,
-                name: name.trim(),
-                category,
-                price,
-                cost: Math.round(price * 0.66),
-                stock: Math.max(1, stock),
-                minStock: 0,
-                alertOn: false,
-                sold30: 0,
-                soldTotal: 0,
-                since: new Date().toISOString().slice(0, 10),
-                channels: ["local"],
-                image: null,
-              })
-            }
-          >
-            Crear y agregar
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button disabled={lines.length === 0 || cashShort || busy} onClick={cobrar}>
+            Cobrar {money(total)}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Nombre del producto">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Repuesto varios" />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Precio de venta">
-            <Input type="number" min={0} value={price || ""} onChange={(e) => setPrice(Math.max(0, +e.target.value))} />
+        <div className="rounded-xl border border-border bg-bg p-3">
+          <p className="mb-2 text-[13px] font-medium text-fg">Agregar ítem</p>
+          <Field label="Concepto / producto">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Repuesto, mano de obra, varios…" />
           </Field>
-          <Field label="Stock inicial">
-            <Input type="number" min={1} value={stock} onChange={(e) => setStock(Math.max(1, +e.target.value))} />
-          </Field>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Field label="Cantidad">
+              <Input type="number" min={1} value={qty} onChange={(e) => setQty(Math.max(1, +e.target.value))} />
+            </Field>
+            <Field label="Precio unitario">
+              <Input type="number" min={0} value={price || ""} onChange={(e) => setPrice(Math.max(0, +e.target.value))} />
+            </Field>
+          </div>
+          <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={addLine}>
+            <Plus className="h-4 w-4" /> Agregar al ticket
+          </Button>
         </div>
-        <Field label="Rubro">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+
+        {lines.length > 0 && (
+          <div className="space-y-1 rounded-xl border border-border">
+            {lines.map((l, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1 truncate text-fg">{l.name}</span>
+                <span className="text-muted tnum">{l.qty} × {money(l.price)}</span>
+                <span className="w-20 text-right font-semibold text-fg tnum">{money(l.price * l.qty)}</span>
+                <button onClick={() => setLines((p) => p.filter((_, x) => x !== i))} className="text-muted hover:text-danger" aria-label="Quitar">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             ))}
-          </Select>
-        </Field>
-        <p className="rounded-lg border border-border bg-bg px-3 py-2 text-[12.5px] text-muted">
-          Queda guardado en tu catálogo (Productos) y disponible para próximas ventas.
-        </p>
+            <div className="flex items-center justify-between border-t border-border px-3 py-2">
+              <span className="font-medium text-fg">Total</span>
+              <span className="text-lg font-bold text-fg tnum">{money(total)}</span>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-1.5 text-[13px] font-medium text-fg">Medio de pago</p>
+          <div className="flex flex-wrap gap-1.5">
+            {paymentMethods.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setPayment(m.id)}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition-colors",
+                  payment === m.id ? "border-brand bg-brand/10 text-brand" : "border-border bg-surface text-muted hover:text-fg",
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {payment === "efectivo" && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1 text-[13px] text-muted">
+              Paga con <span>$</span>
+              <input
+                type="number"
+                min={0}
+                value={paidWith}
+                onChange={(e) => setPaidWith(e.target.value)}
+                placeholder="0"
+                className="h-8 w-24 rounded-lg border border-border bg-bg px-2 text-right text-sm text-fg tnum focus:border-brand focus:bg-surface"
+              />
+            </div>
+            <span className={cn("text-[13px] font-semibold tnum", cashShort ? "text-danger" : "text-success")}>
+              {cashShort ? "Falta " : "Vuelto "}
+              {money(cashShort ? total - paid : change)}
+            </span>
+          </div>
+        )}
       </div>
     </Drawer>
   );
 }
 
-function StepBtn({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+function SaleSuccess({ sale, onClose }: { sale: Sale; onClose: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      className="grid h-7 w-7 place-items-center rounded-lg border border-border text-fg/70 transition-colors hover:bg-surface-2 hover:text-fg active:scale-95"
-    >
-      {children}
-    </button>
-  );
-}
-
-function SaleSuccess({ sale, onNew }: { sale: Sale; onNew: () => void }) {
-  const [facturaNote, setFacturaNote] = useState(false);
-  return (
-    <Card className="flex flex-col items-center px-6 py-8 text-center">
-      <span className="grid h-16 w-16 place-items-center rounded-2xl bg-success/12 text-success">
-        <CheckCircle2 className="h-8 w-8" />
+    <Card className="flex flex-col items-center px-6 py-7 text-center">
+      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-success/12 text-success">
+        <CheckCircle2 className="h-7 w-7" />
       </span>
-      <h2 className="mt-4 text-lg font-semibold text-fg">Venta registrada</h2>
+      <h2 className="mt-3 text-lg font-semibold text-fg">Venta registrada</h2>
       <p className="font-mono text-[13px] text-muted">{sale.id}</p>
-
-      <div className="mt-5 w-full space-y-2 rounded-xl border border-border bg-bg p-4 text-left text-[13px]">
-        {sale.lines.map((l) => (
-          <div key={l.productId} className="flex justify-between">
-            <span className="truncate pr-2 text-fg/80">
-              {l.qty}× {l.name}
-            </span>
-            <span className="text-fg tnum">{money(l.price * l.qty)}</span>
-          </div>
-        ))}
-        {sale.discount > 0 && (
-          <div className="flex justify-between text-muted">
-            <span>Descuento</span>
-            <span className="tnum">-{money(sale.discount)}</span>
-          </div>
-        )}
-        <div className="flex justify-between border-t border-border pt-2 text-base font-bold text-fg">
-          <span>Total</span>
-          <span className="tnum">{money(sale.total)}</span>
-        </div>
+      <div className="mt-4 flex items-end gap-2">
+        <span className="text-2xl font-bold text-fg tnum">{money(sale.total)}</span>
         {sale.paidWith != null && (
-          <div className="flex justify-between text-success">
-            <span>Vuelto</span>
-            <span className="tnum">{money(sale.change)}</span>
-          </div>
+          <span className="mb-1 text-[13px] text-success">vuelto {money(sale.change)}</span>
         )}
       </div>
-
-      {facturaNote && (
-        <p className="mt-4 w-full rounded-lg border border-border bg-bg px-3 py-2 text-[12.5px] text-muted">
-          La facturación AFIP se habilita en la etapa final. La venta ya quedó registrada.
-        </p>
-      )}
-
-      <div className="mt-5 flex w-full gap-2">
-        <Button variant="outline" className="flex-1" onClick={() => setFacturaNote(true)}>
-          <Store className="h-4 w-4" />
-          Facturar
+      <div className="mt-5 flex gap-2">
+        <Button variant="outline" onClick={onClose}>
+          <Store className="h-4 w-4" /> Facturar
         </Button>
-        <Button className="flex-1" onClick={onNew}>
-          Nueva venta
-        </Button>
+        <Button onClick={onClose}>Listo</Button>
       </div>
     </Card>
   );
