@@ -1,0 +1,20 @@
+# Blueprint de Render para AppJeez (app + API en un solo servicio Node).
+# La base de datos es Turso (libSQL): se configuran TURSO_DATABASE_URL y
+# TURSO_AUTH_TOKEN en el panel de Render.
+services:
+  - type: web
+    name: maqjeez2026
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install --include=dev && npm run build && npm --prefix server install
+    startCommand: npm --prefix server start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: APPJEEZ_JWT_SECRET
+        generateValue: true
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
