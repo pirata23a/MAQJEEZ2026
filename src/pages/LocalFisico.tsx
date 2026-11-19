@@ -10,6 +10,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { HelpAccordion } from "@/components/HelpAccordion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -123,6 +124,21 @@ export function LocalFisico() {
             </div>
           </div>
         }
+      />
+
+      <HelpAccordion
+        title="¿Cómo cobrar una venta?"
+        intro={
+          <>
+            Esta es la <strong className="text-fg">caja</strong>. Armás el ticket y cobrás; la venta
+            descuenta el stock y queda guardada en <em>Ventas</em>.
+          </>
+        }
+        steps={[
+          { title: "Agregá productos al ticket", desc: "Tocá un producto (o buscalo por nombre/SKU). Si todavía no está cargado, usá el botón Producto nuevo." },
+          { title: "Elegí el pago y cobrá", desc: "Medio de pago, y si es efectivo poné con cuánto paga para ver el vuelto. Después tocá Cobrar." },
+          { title: "Queda registrada", desc: "La venta descuenta stock y aparece en Ventas. Si te equivocaste, la podés anular desde ahí." },
+        ]}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { HelpAccordion } from "@/components/HelpAccordion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -66,6 +67,22 @@ export function Finanzas() {
             </Button>
           </div>
         }
+      />
+
+      <HelpAccordion
+        title="¿Cómo llevar la caja y los gastos?"
+        intro={
+          <>
+            Acá controlás la plata del negocio: lo que <strong className="text-success">entra</strong> (ventas)
+            y lo que <strong className="text-danger">sale</strong> (gastos, compras y pagos). Todo queda en el libro de abajo.
+          </>
+        }
+        steps={[
+          { title: "Gasto (gastos diarios)", desc: "Botón «Gasto»: cargás cualquier gasto del día — mercadería, almacén, verdulería, luz, sueldos, impuestos. Elegís el rubro y a quién le compraste." },
+          { title: "Registrar compra", desc: "Botón «Registrar compra»: mercadería que le comprás a un proveedor. Suma el stock y registra el egreso (o queda en cuenta corriente)." },
+          { title: "Pago proveedor", desc: "Botón «Pago proveedor»: le pagás a un proveedor y baja lo que le debés (lo ves en la sección Proveedores)." },
+          { title: "El libro", desc: "Abajo listás todo como ingreso (verde) o egreso (rojo). Filtralo por tipo: Ventas, Compras, Gastos o Pagos." },
+        ]}
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">

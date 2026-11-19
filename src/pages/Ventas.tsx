@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Receipt, Ban, PackageX, Check } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { HelpAccordion } from "@/components/HelpAccordion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -53,6 +54,20 @@ export function Ventas() {
       <PageHeader
         title="Ventas"
         subtitle="Todas tus ventas del local. Filtrá por período y anulá si hace falta (devuelve el stock)."
+      />
+
+      <HelpAccordion
+        intro={
+          <>
+            Acá ves el <strong className="text-fg">historial</strong> de las ventas hechas en el local.
+            Para <strong className="text-fg">cobrar una venta nueva</strong>, andá a <em>Local físico</em>.
+          </>
+        }
+        steps={[
+          { title: "Elegí el período", desc: "Diario, Semanal, Mensual o Anual. El resumen de arriba se ajusta a lo que elijas." },
+          { title: "Mirá el resumen", desc: "Cantidad de ventas, total facturado y ticket promedio. Las ventas anuladas no suman." },
+          { title: "Anulá una venta", desc: "El botón Anular revierte la venta: devuelve las unidades al stock y la saca de los totales." },
+        ]}
       />
 
       {/* period filter */}

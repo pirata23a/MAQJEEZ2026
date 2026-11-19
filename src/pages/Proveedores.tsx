@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Building2, HandCoins } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { HelpAccordion } from "@/components/HelpAccordion";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -26,6 +27,21 @@ export function Proveedores() {
             <Plus className="h-4 w-4" /> Nuevo proveedor
           </Button>
         }
+      />
+
+      <HelpAccordion
+        title="¿Cómo manejar los proveedores?"
+        intro={
+          <>
+            La <strong className="text-fg">cuenta corriente</strong> de cada proveedor: cuánto le
+            comprás y cuánto le debés. Las compras se cargan desde <em>Finanzas → Registrar compra</em>.
+          </>
+        }
+        steps={[
+          { title: "Cargá tus proveedores", desc: "Botón «Nuevo proveedor»: nombre y CUIT. Después aparecen acá con su saldo." },
+          { title: "Seguí lo que debés", desc: "Cuando comprás en «cuenta corriente», el saldo del proveedor sube. Arriba ves el total que debés a todos." },
+          { title: "Pagá", desc: "El botón «Pagar» registra el pago y baja el saldo. Ese pago también queda en Finanzas." },
+        ]}
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
