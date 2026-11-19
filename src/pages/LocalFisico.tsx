@@ -274,7 +274,7 @@ function VentaRapidaDrawer({
             </Field>
           </div>
           <Button size="sm" variant="secondary" className="mt-2 w-full" onClick={addLine}>
-            <Plus className="h-4 w-4" /> Agregar al ticket
+            <Plus className="h-4 w-4" /> Agregar artículo
           </Button>
         </div>
 
