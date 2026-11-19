@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============ AppJeez design tokens ============ */
+:root {
+  /* light */
+  --bg: 247 248 250;        /* cool near-white, not cream */
+  --surface: 255 255 255;
+  --surface-2: 241 243 247;
+  --border: 224 228 236;
+  --fg: 17 23 35;           /* slate-ink */
+  --muted: 92 102 122;      /* passes 4.5:1 on light surfaces */
+  --brand: 45 91 227;       /* confident cobalt */
+  --brand-fg: 255 255 255;
+  --accent: 45 91 227;
+  --success: 13 148 95;
+  --warning: 176 104 10;
+  --danger: 201 47 55;
+
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:root[data-theme="dark"] {
+  --bg: 13 15 21;
+  --surface: 19 22 30;
+  --surface-2: 26 30 40;
+  --border: 39 45 59;
+  --fg: 234 238 245;
+  --muted: 150 160 178;     /* passes 4.5:1 on dark surfaces */
+  --brand: 108 142 255;
+  --brand-fg: 9 12 20;
+  --accent: 108 142 255;
+  --success: 52 199 141;
+  --warning: 240 176 64;
+  --danger: 248 113 113;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.tnum { font-variant-numeric: tabular-nums; font-family: "Geist Mono", ui-monospace, monospace; }
+
+/* custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 999px;
+  border: 2px solid rgb(var(--bg));
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted) / 0.6); }
+
+/* focus ring */
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--brand));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
