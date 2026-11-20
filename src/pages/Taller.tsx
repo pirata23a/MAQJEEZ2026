@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Wrench, Zap, Fuel, Camera, Trash2, HandCoins, Phone, ChevronRight, CheckCircle2,
-  Printer, MessageCircle,
+  Printer, MessageCircle, Eye, Image as ImageIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -15,7 +15,7 @@ import { usePos } from "@/context/pos-context";
 import { api, ApiError } from "@/lib/api";
 import { money, num, cn } from "@/lib/utils";
 import {
-  machineTypes, repairStatuses, statusMeta, payState, fileToCompressedDataUrl,
+  machineTypes, repairStatuses, statusMeta, payState, fileToCompressedDataUrl, shareImage,
   type Repair, type RepairStatus, type MachineType, type Tone,
 } from "@/data/taller";
 import { payMethods, type PayMethod } from "@/data/finance";
@@ -121,11 +121,16 @@ function useRepairs() {
       toast("Cobro registrado · suma a la venta del día");
       return r;
     },
-    addPhotos: async (id: string, slot: "in" | "out", images: string[]) => {
+    addPhotos: async (id: string, slot: "in" | "out" | "budget", images: string[]) => {
       const r = await api<Repair>(`/repairs/${id}/photos`, { method: "POST", body: { slot, images } });
       await reload();
-      toast(`Foto${images.length > 1 ? "s" : ""} guardada${images.length > 1 ? "s" : ""}`);
+      toast(slot === "budget" ? "Presupuesto guardado" : `Foto${images.length > 1 ? "s" : ""} guardada${images.length > 1 ? "s" : ""}`);
       return r;
+    },
+    removePhoto: async (id: string, slot: "in" | "out" | "budget", url: string) => {
+      await api<Repair>(`/repairs/${id}/photos/remove`, { method: "POST", body: { slot, url } });
+      await reload();
+      toast("Imagen quitada");
     },
     remove: async (id: string) => {
       await api(`/repairs/${id}`, { method: "DELETE" });
@@ -477,6 +482,13 @@ function RepairDetailDrawer({ repair, onClose, repo }: { repair: Repair | null; 
           </div>
         </div>
 
+        {/* presupuesto como imagen */}
+        <BudgetImageSection
+          photos={repair.photosBudget}
+          onAdd={(imgs) => repo.addPhotos(repair.id, "budget", imgs).catch((e) => repo.toast(errMsg(e), "error"))}
+          onRemove={(url) => repo.removePhoto(repair.id, "budget", url).catch((e) => repo.toast(errMsg(e), "error"))}
+        />
+
         {/* fotos */}
         <PhotoSection
           title="Fotos de ingreso (cómo llegó)"
@@ -517,6 +529,86 @@ function RepairDetailDrawer({ repair, onClose, repo }: { repair: Repair | null; 
 }
 
 /* ------------------------------- piezas ------------------------------- */
+function BudgetImageSection({
+  photos, onAdd, onRemove,
+}: {
+  photos: string[];
+  onAdd: (imgs: string[]) => void;
+  onRemove: (url: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [working, setWorking] = useState(false);
+
+  const pick = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setWorking(true);
+    try {
+      const imgs: string[] = [];
+      for (const f of Array.from(files)) {
+        // el presupuesto se guarda con más calidad para que se lea bien
+        try { imgs.push(await fileToCompressedDataUrl(f, 1600, 0.82)); } catch { /* ignora */ }
+      }
+      if (imgs.length) onAdd(imgs);
+    } finally {
+      setWorking(false);
+      if (ref.current) ref.current.value = "";
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[13px] font-medium text-fg">Presupuesto (imagen)</p>
+        <button onClick={() => ref.current?.click()} disabled={working} className="text-[12.5px] font-medium text-brand hover:underline disabled:opacity-60">
+          {working ? "Subiendo…" : photos.length ? "Agregar otra" : "Subir imagen"}
+        </button>
+      </div>
+
+      {photos.length === 0 ? (
+        <button
+          onClick={() => ref.current?.click()}
+          disabled={working}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-5 text-[13px] text-muted transition-colors hover:border-brand hover:text-brand"
+        >
+          <ImageIcon className="h-4 w-4" /> Cargá el presupuesto (foto o PDF exportado a imagen)
+        </button>
+      ) : (
+        <div className="space-y-2">
+          {photos.map((src) => (
+            <div key={src} className="flex items-center gap-3 rounded-xl border border-border p-2">
+              <a href={src} target="_blank" rel="noopener noreferrer" className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border">
+                <img src={src} alt="Presupuesto" className="h-full w-full object-cover" />
+              </a>
+              <div className="flex flex-1 flex-wrap gap-1.5">
+                <a
+                  href={src} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-[12.5px] text-fg hover:border-brand/40"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Ver
+                </a>
+                <button
+                  onClick={() => shareImage(src, "presupuesto.jpg", "Te paso el presupuesto")}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-success/40 bg-success/10 px-2.5 text-[12.5px] font-medium text-success hover:bg-success/15"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> Compartir
+                </button>
+                <button
+                  onClick={() => onRemove(src)}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-[12.5px] text-muted hover:text-danger"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Quitar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={(e) => pick(e.target.files)} />
+      <p className="mt-2 text-[11.5px] text-muted">Subí una foto del presupuesto escrito o la imagen que mandás. «Compartir» lo manda por WhatsApp desde el celular.</p>
+    </div>
+  );
+}
+
 function PhotoSection({ title, photos, onAdd }: { title: string; photos: string[]; onAdd: (imgs: string[]) => void }) {
   return (
     <div>

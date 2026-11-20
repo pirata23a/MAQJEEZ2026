@@ -26,6 +26,7 @@ export type Repair = {
   notes: string;
   photosIn: string[];
   photosOut: string[];
+  photosBudget: string[];
   createdAt: string;
   updatedAt: string;
   deliveredAt: string | null;
@@ -60,6 +61,24 @@ export function payState(r: { budget: number; paid: number }): { id: PayState; l
   if (r.paid >= r.budget) return { id: "pagado", label: "Pagado", tone: "success" };
   if (r.paid > 0) return { id: "parcial", label: "Pago parcial", tone: "warning" };
   return { id: "pendiente", label: "Pendiente de pago", tone: "danger" };
+}
+
+// Comparte una imagen: en el celular abre el menú nativo (WhatsApp, etc.) con el archivo.
+// En escritorio, si no hay share nativo, abre la imagen en otra pestaña.
+export async function shareImage(url: string, filename = "presupuesto.jpg", text?: string): Promise<void> {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+    const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
+    if (nav.share && nav.canShare && nav.canShare({ files: [file] })) {
+      await nav.share({ files: [file], text });
+      return;
+    }
+  } catch {
+    /* sin share nativo o cancelado */
+  }
+  window.open(url, "_blank", "noopener");
 }
 
 // Comprime y achica una imagen (File) a un dataURL JPEG liviano para subir.

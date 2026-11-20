@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS repairs (
   notes TEXT DEFAULT '',
   photos_in TEXT NOT NULL DEFAULT '[]',
   photos_out TEXT NOT NULL DEFAULT '[]',
+  photos_budget TEXT NOT NULL DEFAULT '[]',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   delivered_at TEXT
@@ -146,6 +147,13 @@ CREATE INDEX IF NOT EXISTS idx_repairs_company ON repairs(company_id);
 `;
 
 await db.executeMultiple(SCHEMA);
+
+// --- migraciones suaves (tablas ya existentes) ---
+for (const alter of [
+  "ALTER TABLE repairs ADD COLUMN photos_budget TEXT NOT NULL DEFAULT '[]'",
+]) {
+  try { await db.execute(alter); } catch { /* la columna ya existe */ }
+}
 
 // --- async query helpers ---
 export async function get(sql, args = []) {

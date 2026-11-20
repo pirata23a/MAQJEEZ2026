@@ -493,6 +493,7 @@ const mapRepair = (r) => ({
   notes: r.notes,
   photosIn: safeArr(r.photos_in),
   photosOut: safeArr(r.photos_out),
+  photosBudget: safeArr(r.photos_budget),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   deliveredAt: r.delivered_at,
@@ -561,12 +562,23 @@ app.post("/api/repairs/:id/photos", async (req, res) => {
   const r = await get("SELECT * FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
   if (!r) return res.status(404).json({ error: "Orden no encontrada" });
   const b = req.body || {};
-  const slot = b.slot === "out" ? "out" : "in";
+  const slot = b.slot === "out" ? "out" : b.slot === "budget" ? "budget" : "in";
+  const col = slot === "out" ? "photos_out" : slot === "budget" ? "photos_budget" : "photos_in";
   const images = Array.isArray(b.images) ? b.images : [];
-  const current = safeArr(slot === "out" ? r.photos_out : r.photos_in);
+  const current = safeArr(r[col]);
   const nuevas = images.map((d) => saveDataUrl(cid(req), r.id, slot, d)).filter(Boolean);
   const todas = [...current, ...nuevas];
-  await run(`UPDATE repairs SET ${slot === "out" ? "photos_out" : "photos_in"} = ?, updated_at = datetime('now') WHERE id = ?`, [JSON.stringify(todas), r.id]);
+  await run(`UPDATE repairs SET ${col} = ?, updated_at = datetime('now') WHERE id = ?`, [JSON.stringify(todas), r.id]);
+  res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));
+});
+
+app.post("/api/repairs/:id/photos/remove", async (req, res) => {
+  const r = await get("SELECT * FROM repairs WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  if (!r) return res.status(404).json({ error: "Orden no encontrada" });
+  const b = req.body || {};
+  const col = b.slot === "out" ? "photos_out" : b.slot === "budget" ? "photos_budget" : "photos_in";
+  const restantes = safeArr(r[col]).filter((u) => u !== b.url);
+  await run(`UPDATE repairs SET ${col} = ?, updated_at = datetime('now') WHERE id = ?`, [JSON.stringify(restantes), r.id]);
   res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));
 });
 
