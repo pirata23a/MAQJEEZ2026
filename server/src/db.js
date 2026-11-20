@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS sales (
   paid_with INTEGER,
   change INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'activa',
+  channel TEXT NOT NULL DEFAULT 'local',
   at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sales_company ON sales(company_id);
@@ -151,6 +152,7 @@ await db.executeMultiple(SCHEMA);
 // --- migraciones suaves (tablas ya existentes) ---
 for (const alter of [
   "ALTER TABLE repairs ADD COLUMN photos_budget TEXT NOT NULL DEFAULT '[]'",
+  "ALTER TABLE sales ADD COLUMN channel TEXT NOT NULL DEFAULT 'local'",
 ]) {
   try { await db.execute(alter); } catch { /* la columna ya existe */ }
 }

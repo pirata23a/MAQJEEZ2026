@@ -23,6 +23,15 @@ export const paymentMethods: { id: PaymentMethod; label: string }[] = [
 
 export type SaleLine = { productId: string; name: string; qty: number; price: number };
 
+export type SaleChannel = "local" | "meli" | "taller";
+
+export const saleChannels: { id: SaleChannel; label: string; short: string; tone: string }[] = [
+  { id: "local", label: "Local físico", short: "Local", tone: "success" },
+  { id: "meli", label: "Mercado Libre", short: "MeLi", tone: "warning" },
+  { id: "taller", label: "Taller", short: "Taller", tone: "brand" },
+];
+export const channelOf = (id: SaleChannel) => saleChannels.find((c) => c.id === id) ?? saleChannels[0];
+
 export type Sale = {
   id: string;
   saleId?: string;
@@ -34,6 +43,7 @@ export type Sale = {
   paidWith: number | null;
   change: number;
   status: "activa" | "anulada";
+  channel: SaleChannel;
   at: string;
 };
 
@@ -45,6 +55,7 @@ type PosState = {
     discount: number;
     payment: PaymentMethod;
     paidWith: number | null;
+    channel?: SaleChannel;
   }) => Promise<Sale>;
   cancelSale: (saleId: string) => Promise<void>;
   editSale: (

@@ -86,6 +86,7 @@ async function mapSale(r) {
     paidWith: r.paid_with,
     change: r.change,
     status: r.status || "activa",
+    channel: r.code && r.code.startsWith("TAL-") ? "taller" : (r.channel || "local"),
     at: r.at,
     lines,
   };
@@ -385,10 +386,11 @@ app.post("/api/sales", async (req, res) => {
 
   const tx = await db.transaction("write");
   try {
+    const channel = b.channel === "meli" ? "meli" : "local";
     const info = await tx.execute({
-      sql: `INSERT INTO sales (company_id, code, subtotal, discount, total, payment, paid_with, change)
-            VALUES (?,?,?,?,?,?,?,?)`,
-      args: [cid(req), "TMP", subtotal, discount, total, b.payment || "efectivo", paidWith, change],
+      sql: `INSERT INTO sales (company_id, code, subtotal, discount, total, payment, paid_with, change, channel)
+            VALUES (?,?,?,?,?,?,?,?,?)`,
+      args: [cid(req), "TMP", subtotal, discount, total, b.payment || "efectivo", paidWith, change, channel],
     });
     const saleId = Number(info.lastInsertRowid);
     const code = `LOC-${1930 + saleId}`;
@@ -594,8 +596,8 @@ app.post("/api/repairs/:id/charge", async (req, res) => {
     await tx.execute({ sql: "UPDATE repairs SET paid = paid + ?, updated_at = datetime('now') WHERE id = ?", args: [amount, r.id] });
     // El cobro de la reparación se registra como VENTA: suma a la venta diaria y a Finanzas.
     const info = await tx.execute({
-      sql: `INSERT INTO sales (company_id, code, subtotal, discount, total, payment, paid_with, change, status)
-            VALUES (?,?,?,?,?,?,?,?,'activa')`,
+      sql: `INSERT INTO sales (company_id, code, subtotal, discount, total, payment, paid_with, change, status, channel)
+            VALUES (?,?,?,?,?,?,?,?,'activa','taller')`,
       args: [cid(req), "TMP", amount, 0, amount, method, null, 0],
     });
     const saleId = Number(info.lastInsertRowid);

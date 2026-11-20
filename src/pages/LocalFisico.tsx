@@ -17,7 +17,7 @@ import { Input, Field } from "@/components/ui/Field";
 import { Drawer } from "@/components/ui/Drawer";
 import { ExpenseDrawer, PurchaseDrawer, SupplierPaymentDrawer } from "@/components/FinanceDrawers";
 import { HandCoins } from "lucide-react";
-import { usePos, paymentMethods, type PaymentMethod, type Sale } from "@/context/pos-context";
+import { usePos, paymentMethods, type PaymentMethod, type Sale, type SaleChannel } from "@/context/pos-context";
 import { useFinance } from "@/context/finance-context";
 import { money, num, cn } from "@/lib/utils";
 
@@ -201,6 +201,7 @@ function VentaRapidaDrawer({
   const [price, setPrice] = useState(0);
   const [payment, setPayment] = useState<PaymentMethod>("efectivo");
   const [paidWith, setPaidWith] = useState("");
+  const [channel, setChannel] = useState<SaleChannel>("local");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -211,6 +212,7 @@ function VentaRapidaDrawer({
     setPrice(0);
     setPayment("efectivo");
     setPaidWith("");
+    setChannel("local");
   }, [open]);
 
   const addLine = () => {
@@ -235,6 +237,7 @@ function VentaRapidaDrawer({
         discount: 0,
         payment,
         paidWith: payment === "efectivo" && paid > 0 ? paid : null,
+        channel,
       });
       onDone(sale);
     } catch {
@@ -260,6 +263,28 @@ function VentaRapidaDrawer({
       }
     >
       <div className="space-y-4">
+        <div>
+          <p className="mb-1.5 text-[13px] font-medium text-fg">¿Dónde se vendió?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { id: "local" as const, label: "Local físico", desc: "Mostrador" },
+              { id: "meli" as const, label: "Mercado Libre", desc: "Venta online" },
+            ]).map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setChannel(c.id)}
+                className={cn(
+                  "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  channel === c.id ? "border-brand bg-brand/10" : "border-border bg-surface hover:border-brand/40",
+                )}
+              >
+                <p className={cn("text-[13px] font-semibold", channel === c.id ? "text-brand" : "text-fg")}>{c.label}</p>
+                <p className="text-[11.5px] text-muted">{c.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="rounded-xl border border-border bg-bg p-3">
           <p className="mb-2 text-[13px] font-medium text-fg">Agregar ítem</p>
           <Field label="Concepto / producto">

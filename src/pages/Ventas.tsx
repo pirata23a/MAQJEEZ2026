@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, Input } from "@/components/ui/Field";
-import { usePos, paymentMethods, type PaymentMethod, type Sale, type SaleLine } from "@/context/pos-context";
+import { usePos, paymentMethods, saleChannels, channelOf, type PaymentMethod, type Sale, type SaleLine } from "@/context/pos-context";
 import { money, num, cn } from "@/lib/utils";
 
 const methodLabel = (id: string) => paymentMethods.find((m) => m.id === id)?.label ?? id;
@@ -51,6 +51,10 @@ export function Ventas() {
   const activas = rows.filter((s) => s.status !== "anulada");
   const total = activas.reduce((a, s) => a + s.total, 0);
   const promedio = activas.length ? Math.round(total / activas.length) : 0;
+  const byChannel = saleChannels.map((c) => {
+    const items = activas.filter((s) => (s.channel ?? "local") === c.id);
+    return { ...c, count: items.length, total: items.reduce((a, s) => a + s.total, 0) };
+  });
 
   return (
     <div className="animate-fade-up">
@@ -104,6 +108,22 @@ export function Ventas() {
         </Card>
       </div>
 
+      {/* desglose por canal */}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {byChannel.map((c) => (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center justify-between">
+              <Badge tone={c.tone as "success" | "warning" | "brand"}>{c.label}</Badge>
+              <span className="text-[12px] text-muted tnum">{num(c.count)} {c.count === 1 ? "venta" : "ventas"}</span>
+            </div>
+            <p className="mt-2 text-lg font-bold text-fg tnum">{money(c.total)}</p>
+            <p className="text-[11.5px] text-muted">
+              {total > 0 ? Math.round((c.total / total) * 100) : 0}% del total
+            </p>
+          </Card>
+        ))}
+      </div>
+
       <Card className="overflow-hidden">
         {rows.length === 0 ? (
           <div className="grid place-items-center gap-2 px-6 py-16 text-center">
@@ -116,6 +136,7 @@ export function Ventas() {
               <thead>
                 <tr className="border-b border-border text-left text-[12px] text-muted">
                   <th className="px-4 py-3 font-medium">Ticket</th>
+                  <th className="px-4 py-3 font-medium">Canal</th>
                   <th className="hidden px-4 py-3 font-medium sm:table-cell">Fecha</th>
                   <th className="px-4 py-3 font-medium">Ítems</th>
                   <th className="hidden px-4 py-3 font-medium md:table-cell">Pago</th>
@@ -138,6 +159,12 @@ export function Ventas() {
                       <td className="px-4 py-3">
                         <span className="font-mono text-[12.5px] font-medium text-fg">{s.id}</span>
                         {anulada && <Badge tone="danger" className="ml-2">Anulada</Badge>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const ch = channelOf(s.channel ?? "local");
+                          return <Badge tone={ch.tone as "success" | "warning" | "brand"}>{ch.short}</Badge>;
+                        })()}
                       </td>
                       <td className="hidden px-4 py-3 text-muted sm:table-cell tnum">{dateFmt.format(new Date(s.at.replace(" ", "T")))}</td>
                       <td className="px-4 py-3 text-muted tnum">{s.lines.length}</td>
