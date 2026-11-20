@@ -576,12 +576,22 @@ app.post("/api/repairs/:id/charge", async (req, res) => {
   const amount = Math.max(0, Number(req.body?.amount) || 0);
   const method = req.body?.method || "efectivo";
   if (amount <= 0) return res.status(400).json({ error: "Importe inválido" });
+  const maquina = [r.brand, r.model].filter(Boolean).join(" ") || "máquina";
   const tx = await db.transaction("write");
   try {
     await tx.execute({ sql: "UPDATE repairs SET paid = paid + ?, updated_at = datetime('now') WHERE id = ?", args: [amount, r.id] });
+    // El cobro de la reparación se registra como VENTA: suma a la venta diaria y a Finanzas.
+    const info = await tx.execute({
+      sql: `INSERT INTO sales (company_id, code, subtotal, discount, total, payment, paid_with, change, status)
+            VALUES (?,?,?,?,?,?,?,?,'activa')`,
+      args: [cid(req), "TMP", amount, 0, amount, method, null, 0],
+    });
+    const saleId = Number(info.lastInsertRowid);
+    const code = `TAL-${1930 + saleId}`;
+    await tx.execute({ sql: "UPDATE sales SET code = ? WHERE id = ?", args: [code, saleId] });
     await tx.execute({
-      sql: "INSERT INTO finance_entries (company_id, kind, concept, amount, method, on_account) VALUES (?,?,?,?,?,0)",
-      args: [cid(req), "cobro-taller", `Taller · ${r.code} · ${r.client_name || "cliente"}`, amount, method],
+      sql: "INSERT INTO sale_lines (sale_id, product_id, name, qty, price) VALUES (?,?,?,?,?)",
+      args: [saleId, null, `Taller ${r.code} · ${maquina}${r.client_name ? " · " + r.client_name : ""}`, 1, amount],
     });
     await tx.commit();
     res.json(mapRepair(await get("SELECT * FROM repairs WHERE id = ?", [r.id])));

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Wrench, Zap, Fuel, Camera, Trash2, HandCoins, Phone, ChevronRight, CheckCircle2,
+  Printer, MessageCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useToast } from "@/context/toast-context";
+import { usePos } from "@/context/pos-context";
 import { api, ApiError } from "@/lib/api";
 import { money, num, cn } from "@/lib/utils";
 import {
@@ -21,10 +23,77 @@ import { payMethods, type PayMethod } from "@/data/finance";
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : "Error de conexión");
 const badgeTone = (t: Tone) => (t === "neutral" ? "muted" : t) as "brand" | "success" | "warning" | "danger" | "muted";
 const dateFmt = new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const dateFull = new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+// Teléfono argentino -> formato wa.me (sin +, con 549 si no trae país)
+function waPhone(phone: string): string {
+  let d = (phone || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("54")) return d;
+  if (d.startsWith("0")) d = d.slice(1);
+  if (d.startsWith("15")) d = d.slice(2);
+  return "549" + d;
+}
+
+function waMessage(r: Repair): string {
+  const maquina = [r.brand, r.model].filter(Boolean).join(" ") || "tu máquina";
+  const hola = `Hola${r.clientName ? " " + r.clientName : ""}! Somos de MAQJEEZ.`;
+  const ref = `${maquina} (orden ${r.code})`;
+  const saldo = Math.max(0, r.budget - r.paid);
+  if (r.status === "presupuestado")
+    return `${hola} El presupuesto de ${ref} es de ${money(r.budget)}. ¿Lo aprobás así avanzamos?`;
+  if (r.status === "esperando-repuesto")
+    return `${hola} Estamos esperando un repuesto para ${ref}. Te avisamos apenas llegue.`;
+  if (r.status === "reparado" || r.status === "informado")
+    return `${hola} ${ref} ya está lista para retirar.${saldo > 0 ? ` Saldo a abonar: ${money(saldo)}.` : ""}`;
+  if (r.status === "entregado")
+    return `${hola} Gracias por confiar en nosotros. ${ref} fue entregada. Cualquier cosa, escribinos.`;
+  return `${hola} Novedades de ${ref}: ${statusMeta(r.status).label}.`;
+}
+
+function printReceipt(r: Repair) {
+  const maquina = [r.brand, r.model].filter(Boolean).join(" ") || "—";
+  const tipo = machineTypes.find((m) => m.id === r.machineType)?.label ?? "";
+  const saldo = Math.max(0, r.budget - r.paid);
+  const row = (k: string, v: string) =>
+    `<tr><td style="padding:4px 10px 4px 0;color:#666">${k}</td><td style="padding:4px 0;font-weight:600">${v}</td></tr>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${r.code} · MAQJEEZ</title>
+    <style>body{font-family:system-ui,Arial,sans-serif;color:#111;max-width:640px;margin:32px auto;padding:0 20px}
+    h1{font-size:22px;margin:0}.muted{color:#777;font-size:13px}hr{border:none;border-top:1px solid #ddd;margin:16px 0}
+    table{border-collapse:collapse;font-size:14px}.tot{font-size:16px}.box{border:1px solid #ddd;border-radius:10px;padding:12px 16px;margin-top:12px}
+    @media print{button{display:none}}</style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div><h1>MAQJEEZ</h1><div class="muted">Servicio técnico · Orden de taller</div></div>
+      <div style="text-align:right"><div style="font-size:20px;font-weight:700">${r.code}</div><div class="muted">${dateFull.format(new Date((r.createdAt || "").replace(" ", "T")))}</div></div>
+    </div><hr>
+    <table>
+      ${row("Cliente", r.clientName || "—")}
+      ${row("Teléfono", r.clientPhone || "—")}
+      ${row("Máquina", `${tipo} · ${maquina}`)}
+      ${row("Falla / motivo", r.fault || "—")}
+      ${row("Estado", statusMeta(r.status).label)}
+    </table>
+    <div class="box">
+      <table style="width:100%">
+        ${row("Presupuesto", money(r.budget))}
+        ${row("Cobrado", money(r.paid))}
+        <tr><td style="padding:6px 10px 0 0" class="tot">Saldo</td><td style="padding:6px 0 0;font-weight:700" class="tot">${money(saldo)}</td></tr>
+      </table>
+    </div>
+    ${r.notes ? `<p class="muted" style="margin-top:14px">Obs.: ${r.notes}</p>` : ""}
+    <p class="muted" style="margin-top:24px">Conservá este comprobante para el retiro y la garantía.</p>
+    <button onclick="window.print()" style="margin-top:16px;padding:10px 18px;border:0;border-radius:8px;background:#111;color:#fff;cursor:pointer">Imprimir</button>
+    </body></html>`;
+  const w = window.open("", "_blank", "width=720,height=800");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+}
 
 /* ------------------------------- hook ------------------------------- */
 function useRepairs() {
   const toast = useToast();
+  const { reload: reloadSales } = usePos();
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,8 +117,8 @@ function useRepairs() {
     },
     charge: async (id: string, amount: number, method: PayMethod) => {
       const r = await api<Repair>(`/repairs/${id}/charge`, { method: "POST", body: { amount, method } });
-      await reload();
-      toast("Cobro registrado");
+      await Promise.all([reload(), reloadSales()]);
+      toast("Cobro registrado · suma a la venta del día");
       return r;
     },
     addPhotos: async (id: string, slot: "in" | "out", images: string[]) => {
@@ -345,6 +414,26 @@ function RepairDetailDrawer({ repair, onClose, repo }: { repair: Repair | null; 
               {repairStatuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </Select>
           </div>
+        </div>
+
+        {/* acciones: comprobante + whatsapp */}
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" onClick={() => printReceipt(repair)}>
+            <Printer className="h-4 w-4" /> Comprobante
+          </Button>
+          {repair.clientPhone ? (
+            <a
+              href={`https://wa.me/${waPhone(repair.clientPhone)}?text=${encodeURIComponent(waMessage(repair))}`}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 text-[13.5px] font-medium text-success transition-colors hover:bg-success/15"
+            >
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </a>
+          ) : (
+            <span className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border text-[12.5px] text-muted">
+              Sin teléfono
+            </span>
+          )}
         </div>
 
         {repair.fault && (

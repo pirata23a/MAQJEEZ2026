@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -50,6 +51,7 @@ type PosState = {
     saleId: string,
     input: { lines: SaleLine[]; payment: PaymentMethod; paidWith: number | null },
   ) => Promise<void>;
+  reload: () => Promise<void>;
 };
 
 const Ctx = createContext<PosState | null>(null);
@@ -59,9 +61,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const { reload: reloadProducts } = useProducts();
   const [sales, setSales] = useState<Sale[]>([]);
 
+  const reload = useCallback(() => api<Sale[]>("/sales").then(setSales).catch(() => {}), []);
+
   useEffect(() => {
-    api<Sale[]>("/sales").then(setSales).catch(() => {});
-  }, []);
+    reload();
+  }, [reload]);
 
   const value = useMemo<PosState>(
     () => ({
@@ -101,8 +105,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
           throw e;
         }
       },
+      reload,
     }),
-    [sales, reloadProducts, toast],
+    [sales, reloadProducts, toast, reload],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
