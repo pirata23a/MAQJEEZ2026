@@ -46,6 +46,10 @@ type PosState = {
     paidWith: number | null;
   }) => Promise<Sale>;
   cancelSale: (saleId: string) => Promise<void>;
+  editSale: (
+    saleId: string,
+    input: { lines: SaleLine[]; payment: PaymentMethod; paidWith: number | null },
+  ) => Promise<void>;
 };
 
 const Ctx = createContext<PosState | null>(null);
@@ -84,6 +88,17 @@ export function PosProvider({ children }: { children: ReactNode }) {
           toast("Venta anulada y stock devuelto");
         } catch (e) {
           toast(e instanceof ApiError ? e.message : "No se pudo anular la venta", "error");
+        }
+      },
+      editSale: async (saleId, input) => {
+        try {
+          const updated = await api<Sale>(`/sales/${saleId}`, { method: "PATCH", body: input });
+          setSales((prev) => prev.map((s) => (s.saleId === saleId ? updated : s)));
+          reloadProducts().catch(() => {});
+          toast("Venta actualizada");
+        } catch (e) {
+          toast(e instanceof ApiError ? e.message : "No se pudo editar la venta", "error");
+          throw e;
         }
       },
     }),

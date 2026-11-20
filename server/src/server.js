@@ -329,6 +329,50 @@ app.post("/api/sales/:id/cancel", async (req, res) => {
   }
 });
 
+app.patch("/api/sales/:id", async (req, res) => {
+  const sale = await get("SELECT * FROM sales WHERE id = ? AND company_id = ?", [req.params.id, cid(req)]);
+  if (!sale) return res.status(404).json({ error: "Venta no encontrada" });
+  if (sale.status === "anulada") return res.status(400).json({ error: "No se puede editar una venta anulada" });
+  const b = req.body || {};
+  const newLines = Array.isArray(b.lines) ? b.lines : [];
+  if (newLines.length === 0) return res.status(400).json({ error: "La venta no puede quedar vacía" });
+  const subtotal = newLines.reduce((a, l) => a + l.price * l.qty, 0);
+  const discount = b.discount != null ? b.discount : sale.discount;
+  const total = Math.max(0, subtotal - discount);
+  const payment = b.payment || sale.payment;
+  const paidWith = b.paidWith !== undefined ? b.paidWith : sale.paid_with;
+  const change = paidWith != null ? Math.max(0, paidWith - total) : 0;
+
+  const tx = await db.transaction("write");
+  try {
+    // 1) devolver al stock las líneas viejas (las que descontaban)
+    const oldLines = (await tx.execute({ sql: "SELECT * FROM sale_lines WHERE sale_id = ?", args: [sale.id] })).rows;
+    for (const l of oldLines)
+      if (l.product_id != null)
+        await adjustStockOn(tx, cid(req), l.product_id, Math.abs(l.qty), "ajuste-venta", `Edición venta ${sale.code}`, req.user.name);
+    // 2) reemplazar líneas
+    await tx.execute({ sql: "DELETE FROM sale_lines WHERE sale_id = ?", args: [sale.id] });
+    for (const l of newLines) {
+      await tx.execute({
+        sql: "INSERT INTO sale_lines (sale_id, product_id, name, qty, price) VALUES (?,?,?,?,?)",
+        args: [sale.id, l.productId || null, l.name, l.qty, l.price],
+      });
+      if (l.productId)
+        await adjustStockOn(tx, cid(req), l.productId, -Math.abs(l.qty), "ajuste-venta", `Edición venta ${sale.code}`, req.user.name);
+    }
+    // 3) actualizar cabecera
+    await tx.execute({
+      sql: "UPDATE sales SET subtotal = ?, discount = ?, total = ?, payment = ?, paid_with = ?, change = ? WHERE id = ?",
+      args: [subtotal, discount, total, payment, paidWith, change, sale.id],
+    });
+    await tx.commit();
+    res.json(await mapSale(await get("SELECT * FROM sales WHERE id = ?", [sale.id])));
+  } catch {
+    await tx.rollback();
+    res.status(500).json({ error: "No se pudo editar la venta" });
+  }
+});
+
 app.post("/api/sales", async (req, res) => {
   const b = req.body || {};
   const lines = Array.isArray(b.lines) ? b.lines : [];
