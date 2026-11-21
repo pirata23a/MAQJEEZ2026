@@ -1,12 +1,16 @@
 import { useMemo } from "react";
-import { TrendingUp, TrendingDown, Trophy, Boxes } from "lucide-react";
+import { TrendingUp, TrendingDown, Trophy, Boxes, PieChart } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Thumb } from "@/components/ChannelPills";
 import { useProducts } from "@/context/products-context";
-import { usePos } from "@/context/pos-context";
+import { usePos, saleChannels } from "@/context/pos-context";
 import { money, num, cn } from "@/lib/utils";
+
+// color CSS por tono de canal (orden categórico fijo: local=verde, meli=ámbar, taller=cobalto)
+const toneToken = (t: string) =>
+  t === "success" ? "--success" : t === "warning" ? "--warning" : t === "danger" ? "--danger" : "--brand";
 
 export function Metricas() {
   const { products } = useProducts();
@@ -35,6 +39,24 @@ export function Metricas() {
   const top = ranked.slice(0, 5);
   const bottom = [...ranked].reverse().slice(0, 5);
 
+  // Ventas por sector (canal): datos reales de ventas, últimos 30 días
+  const sector = useMemo(() => {
+    const cutoff = Date.now() - 30 * 86400000;
+    const activas = sales.filter((s) => s.status !== "anulada");
+    const recientes = activas.filter((s) => {
+      const d = new Date(s.at.includes("T") ? s.at : s.at.replace(" ", "T"));
+      return d.getTime() >= cutoff;
+    });
+    const base = recientes.length ? recientes : activas;
+    const tot = base.reduce((a, s) => a + s.total, 0);
+    const rows = saleChannels.map((c) => {
+      const items = base.filter((s) => (s.channel ?? "local") === c.id);
+      const monto = items.reduce((a, s) => a + s.total, 0);
+      return { ...c, monto, count: items.length, pct: tot > 0 ? monto / tot : 0 };
+    });
+    return { total: tot, rows };
+  }, [sales]);
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -48,6 +70,66 @@ export function Metricas() {
         <Kpi icon={Trophy} label="Producto estrella" value={star?.p.name ?? "—"} small />
         <Kpi icon={Boxes} label="Productos activos" value={num(products.length)} />
       </div>
+
+      {/* Ventas por sector (canal) */}
+      <Card className="mb-5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChart className="h-[18px] w-[18px] text-brand" />
+            Ventas por sector
+          </CardTitle>
+          <span className="text-[12.5px] text-muted">Últimos 30 días</span>
+        </CardHeader>
+        <CardBody>
+          {sector.total <= 0 ? (
+            <p className="py-6 text-center text-[13px] text-muted">
+              Todavía no hay ventas para mostrar el reparto por sector.
+            </p>
+          ) : (
+            <>
+              {/* barra apilada 100% — una barra, segmentos por canal con separación de 2px */}
+              <div className="mb-4 flex h-3 w-full overflow-hidden rounded-full bg-surface-2">
+                {sector.rows
+                  .filter((r) => r.pct > 0)
+                  .map((r) => (
+                    <div
+                      key={r.id}
+                      className="h-full first:rounded-l-full last:rounded-r-full"
+                      style={{
+                        width: `${r.pct * 100}%`,
+                        background: `rgb(var(${toneToken(r.tone)}))`,
+                        boxShadow: "inset -2px 0 0 rgb(var(--surface))",
+                      }}
+                      title={`${r.label}: ${money(r.monto)}`}
+                    />
+                  ))}
+              </div>
+
+              {/* leyenda + detalle por sector */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {sector.rows.map((r) => (
+                  <div key={r.id} className="rounded-xl border border-border bg-bg p-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: `rgb(var(${toneToken(r.tone)}))` }}
+                      />
+                      <span className="text-[13px] font-medium text-fg">{r.label}</span>
+                      <span className="ml-auto text-[12px] text-muted tnum">
+                        {Math.round(r.pct * 100)}%
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-lg font-bold text-fg tnum">{money(r.monto)}</p>
+                    <p className="text-[12px] text-muted tnum">
+                      {num(r.count)} {r.count === 1 ? "venta" : "ventas"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </CardBody>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
